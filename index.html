@@ -71,6 +71,25 @@ const BASE_SUBJECTS = [
  {name:'زبان انگلیسی',icon:'✣',color:'#55b8a2'},
  {name:'روتین روزانه',icon:'☀',color:'#d34f75'}
 ];
+  const COMMON_TRACK_SUBJECTS = ['فارسی','نگارش','دینی','عربی','زبان انگلیسی','سلامت و بهداشت'];
+
+const TRACK_META = {
+ math:{label:'ریاضی فیزیک',branch:'شاخه نظری',defaultSubject:'حسابان'},
+ science:{label:'علوم تجربی',branch:'شاخه نظری',defaultSubject:'زیست‌شناسی'},
+ humanities:{label:'ادبیات و علوم انسانی',branch:'شاخه نظری',defaultSubject:'علوم و فنون ادبی'},
+ maaref:{label:'علوم و معارف اسلامی',branch:'شاخه نظری',defaultSubject:'اصول عقاید'},
+ technical:{label:'فنی و حرفه‌ای',branch:'شاخه فنی و حرفه‌ای',defaultSubject:'دانش فنی پایه',specialty:true},
+ workskill:{label:'کاردانش',branch:'شاخه کاردانش',defaultSubject:'مهارت تخصصی',specialty:true}
+};
+
+const TRACK_SUBJECTS = {
+ math:['حسابان','ریاضی','هندسه','فیزیک','شیمی','ریاضیات گسسته','آمار و احتمال',...COMMON_TRACK_SUBJECTS,'جغرافیای ایران','آمادگی دفاعی','کارگاه کارآفرینی و تولید'],
+ science:['زیست‌شناسی','ریاضی','فیزیک','شیمی','زمین‌شناسی','آزمایشگاه علوم تجربی',...COMMON_TRACK_SUBJECTS,'جغرافیای ایران','آمادگی دفاعی','کارگاه کارآفرینی و تولید'],
+ humanities:['ریاضی و آمار','علوم و فنون ادبی','جامعه‌شناسی','تاریخ','جغرافیا','فلسفه','منطق','اقتصاد','روان‌شناسی',...COMMON_TRACK_SUBJECTS,'جغرافیای ایران','آمادگی دفاعی','کارگاه کارآفرینی و تولید'],
+ maaref:['اصول عقاید','عربی تخصصی','علوم و معارف قرآنی','احکام','تاریخ اسلام','علوم اجتماعی','فلسفه و منطق',...COMMON_TRACK_SUBJECTS,'جغرافیای ایران','آمادگی دفاعی'],
+ technical:['دانش فنی پایه','دانش فنی تخصصی','کارگاه تخصصی','الزامات محیط کار','کارگاه نوآوری و کارآفرینی','کارورزی','ریاضی','فیزیک','شیمی',...COMMON_TRACK_SUBJECTS,'آمادگی دفاعی'],
+ workskill:['مهارت تخصصی','دانش فنی پایه','کارگاه مهارتی','الزامات محیط کار','کارگاه نوآوری و کارآفرینی','کارورزی','ریاضی','علوم تجربی',...COMMON_TRACK_SUBJECTS,'آمادگی دفاعی']
+};
 let SUBJECTS = BASE_SUBJECTS.slice();
 const CURRICULUM = {
  'فیزیک':{
@@ -111,11 +130,12 @@ function normalizeWeeklySchedule(source){
  });
  return out;
 }
-const DEFAULT = {sessions:[],customSubjects:[],goalHours:6,theme:'dark',wallpaper:null,headerWallpaper:null,timerWallpaper:null,eventCountdown:null,displayName:'دانش‌آموز',timer:null,reportWeekOffset:0,statsPeriod:'day',statsDayOffset:0,statsMonthOffset:0,weeklySchedule:makeDefaultWeeklySchedule(),plannedBlocks:[]};
+const DEFAULT = {studyTrack:null,vocationalSpecialty:'',sessions:[],customSubjects:[],goalHours:6,theme:'dark',wallpaper:null,headerWallpaper:null,timerWallpaper:null,eventCountdown:null,displayName:'دانش‌آموز',timer:null,reportWeekOffset:0,statsPeriod:'day',statsDayOffset:0,statsMonthOffset:0,weeklySchedule:makeDefaultWeeklySchedule(),plannedBlocks:[]};
 let state = loadState();
 if (syncSubjects()) saveState();
 let activeView = 'dashboard';
 let setupDraft = null;
+  let trackChangeMode = false;
 let modalDraft = null;
 let planDraft = null;
 let toastTimer = null;
@@ -203,7 +223,34 @@ function eventCountdownInfo(){const ev=state.eventCountdown;if(!ev?.title||!/^\d
 function renderEventCountdown(){const ev=eventCountdownInfo();if(!ev)return '';const label=ev.days>0?'روز مانده':ev.days<0?'روز گذشته':'امروز';return `<section class="event-countdown panel"><div class="event-copy"><small>روزشمار رویداد</small><strong>${esc(ev.title)}</strong><span>${faDate(ev.date,'long')}</span></div><div class="event-days"><strong>${fa(Math.abs(ev.days))}</strong><small>${label}</small></div></section>`;}
 function notify(message,type='ok'){const root=document.getElementById('toast-root');root.innerHTML=`<div class="toast ${type==='error'?'error':''}">${esc(message)}</div>`;clearTimeout(toastTimer);toastTimer=setTimeout(()=>root.innerHTML='',2800);}
 function nav(view){activeView=view;document.querySelectorAll('[data-view]').forEach(el=>el.classList.toggle('active',el.dataset.view===view));render();window.scrollTo({top:0,behavior:'smooth'});}
-function render(){applyTheme();const root=document.getElementById('view-root');const templates={dashboard:renderDashboard,setup:renderSetup,timer:renderTimer,challenge:renderChallenge,streak:renderStreak,report:renderReport,settings:renderSettings};root.innerHTML=(templates[activeView]||renderDashboard)();applyPersonalBackgrounds();document.getElementById('floating-add').classList.toggle('hidden',['setup','timer'].includes(activeView));updateHero();if(activeView==='timer')updateTimerDisplay();}
+  function render(){
+ applyTheme();
+ const root=document.getElementById('view-root');
+
+ if(!state.studyTrack||trackChangeMode){
+  root.innerHTML=renderTrackOnboarding();
+  document.getElementById('floating-add').classList.add('hidden');
+  updateHero();
+  return;
+ }
+
+ const templates={
+  dashboard:renderDashboard,
+  setup:renderSetup,
+  timer:renderTimer,
+  challenge:renderChallenge,
+  streak:renderStreak,
+  report:renderReport,
+  settings:renderSettings
+ };
+
+ root.innerHTML=(templates[activeView]||renderDashboard)();
+ applyPersonalBackgrounds();
+ document.getElementById('floating-add').classList.toggle('hidden',['setup','timer'].includes(activeView));
+ updateHero();
+
+ if(activeView==='timer')updateTimerDisplay();
+  }
 function updateHero(){const t=todayTotal();document.getElementById('hero-date').textContent=faDate(dateKey(),'long');document.getElementById('hero-today-hours').textContent=`${fmtHM(t)} مطالعه امروز`;document.getElementById('hero-streak').textContent=`${fa(streakCount())} روز پیوستگی`;}
 function renderDashboard(){const t=todayTotal(),use=todayUseful(),goal=state.goalHours*3600000,pct=goal?Math.min(100,t/goal*100):0;const sessions=studyDaySessions().slice().sort((a,b)=>b.endAt-a.endAt);const bySubject=SUBJECTS.map(s=>({subject:s,ms:sum(studyDaySessions().filter(x=>x.subject===s.name),x=>x.totalMs)}));return `
 <div class="dashboard-intro">
@@ -313,7 +360,43 @@ function renderPlannedSchedule(){const blocks=Array.isArray(state.plannedBlocks)
 function updatePlanChapterOptions(){if(!planDraft)return;const subject=document.getElementById('plan-subject')?.value||'حسابان',grade=subject==='حسابان'?'12':(document.getElementById('plan-grade')?.value||'12');const current=document.getElementById('plan-chapter')?.value||'';const wrap=document.getElementById('plan-chapter-wrap');if(wrap)wrap.innerHTML=`<label for="plan-chapter">چه فصلی؟</label><select id="plan-chapter">${planChapterOptions(subject,grade,current)}</select>`;}
 function savePlannedBlock(){const subject=document.getElementById('plan-subject').value;const grade=subject==='حسابان'?'12':document.getElementById('plan-grade').value;const chapter=document.getElementById('plan-chapter').value;const topic=document.getElementById('plan-topic').value.trim();const tests=document.getElementById('plan-test-yes').classList.contains('selected');const essay=document.getElementById('plan-essay-yes').classList.contains('selected');let testCount=0;if(tests){testCount=Number(document.getElementById('plan-test-count').value);if(!Number.isInteger(testCount)||testCount<1||testCount>10000){const err=document.getElementById('plan-details-error');if(err)err.textContent='تعداد تست موردنیاز باید بین ۱ تا ۱۰٬۰۰۰ باشد.';return;}}
  const block={id:crypto.randomUUID?crypto.randomUUID():String(Date.now())+Math.random(),dayKey:Number(planDraft.dayKey),startHour:planDraft.startHour,startMinute:planDraft.startMinute,endHour:planDraft.endHour,endMinute:planDraft.endMinute,subject,grade,chapter,topic,tests,testCount,essay};state.plannedBlocks.push(block);saveState();planDraft=null;closeModal();render();notify('پارت به برنامه روزانه اضافه شد.');}
-function renderSettings(){return `<section class="panel"><div class="section-head" style="margin-top:0"><div><h2>تنظیمات دفتر مطالعه</h2><small>ظاهر و هدف‌های برنامه رو شخصی‌سازی کن</small></div><span style="font-size:24px">⚙</span></div><div class="settings-row"><div><strong>نام نمایشی</strong><div class="muted tiny">برای نمایش در گزارش‌ها</div></div><div style="width:170px"><input class="input" id="display-name" value="${esc(state.displayName)}" maxlength="40"></div></div><div class="settings-row"><div><strong>هدف مطالعه روزانه</strong><div class="muted tiny">بر حسب ساعت · مطابق برنامه هفتگی</div></div><div style="width:110px"><input class="input" id="goal-hours" type="number" min="0.5" max="24" step="0.5" value="${state.goalHours}"></div></div><div class="settings-row" style="align-items:flex-start"><div><strong>تم رنگی</strong><div class="muted tiny">ظاهر دلخواه برنامه رو انتخاب کن</div></div><div class="theme-options">${[['dark','تیره'],['light','روشن'],['purple','بنفش'],['orange','نارنجی'],['amoled','AMOLED مشکی']].map(([v,l])=>`<button class="theme-btn ${state.theme===v?'active':''}" data-action="theme" data-theme="${v}">${l}</button>`).join('')}</div></div><div class="settings-row"><div><strong>پس‌زمینه دلخواه برنامه</strong><div class="muted tiny">پس‌زمینه کلی صفحات؛ یک عکس از گوشی انتخاب کن</div></div><div><label class="btn btn-soft btn-sm" for="wallpaper-file">انتخاب تصویر</label><input id="wallpaper-file" type="file" accept="image/*" class="hidden">${state.wallpaper?'<button class="btn btn-red btn-sm" data-action="remove-wallpaper">حذف</button>':''}</div></div>
+function renderTrackOnboarding(){
+ const selected=TRACK_META[state.studyTrack]?state.studyTrack:'';
+
+ return `<section class="panel setup-card" style="max-width:680px;margin:24px auto">
+  <div class="setup-title">
+   <div>
+    <h2>انتخاب رشتهٔ تحصیلی</h2>
+    <div class="muted tiny">برای تنظیم فهرست درس‌ها، رشته‌ات را انتخاب کن.</div>
+   </div>
+   <span style="font-size:28px">🎓</span>
+  </div>
+  <form id="track-form">
+   <div class="field">
+    <label for="track-select">شاخه و رشتهٔ تحصیلی</label>
+    <select class="input" id="track-select" required>
+     <option value="">انتخاب رشته...</option>
+     ${Object.entries(TRACK_META).map(([key,item])=>`<option value="${key}" ${selected===key?'selected':''}>${item.branch} ـ ${item.label}</option>`).join('')}
+    </select>
+   </div>
+   <div class="field" style="margin-top:14px">
+    <label for="track-specialty">رشتهٔ تخصصی هنرستان</label>
+    <input class="input" id="track-specialty" maxlength="60" value="${esc(state.vocationalSpecialty||'')}" placeholder="فقط برای فنی‌وحرفه‌ای و کاردانش">
+    <small class="muted">در صورت انتخاب یکی از شاخه‌های هنرستان، نام رشتهٔ تخصصی‌ات را وارد کن.</small>
+   </div>
+   <div id="track-error" class="tiny" style="color:#ff8290;margin-top:9px"></div>
+   <button class="btn btn-primary btn-block" type="submit">ثبت رشته و ادامه</button>
+   ${state.studyTrack?'<button class="btn btn-soft btn-block" type="button" data-action="cancel-track" style="margin-top:8px">انصراف</button>':''}
+  </form>
+ </section>`;
+}
+  function renderSettings(){return `<section class="panel"><div class="section-head" style="margin-top:0"><div><h2>تنظیمات دفتر مطالعه</h2><small>ظاهر و هدف‌های برنامه رو شخصی‌سازی کن</small></div><span style="font-size:24px">⚙</span></div><div class="settings-row"><div><div class="settings-row">
+ <div>
+  <strong>رشتهٔ تحصیلی</strong>
+  <div class="muted tiny">${esc(TRACK_META[state.studyTrack]?.label||'انتخاب نشده')}</div>
+ </div>
+ <button class="btn btn-soft btn-sm" data-action="change-track">تغییر رشته</button>
+</div><strong>نام نمایشی</strong><div class="muted tiny">برای نمایش در گزارش‌ها</div></div><div style="width:170px"><input class="input" id="display-name" value="${esc(state.displayName)}" maxlength="40"></div></div><div class="settings-row"><div><strong>هدف مطالعه روزانه</strong><div class="muted tiny">بر حسب ساعت · مطابق برنامه هفتگی</div></div><div style="width:110px"><input class="input" id="goal-hours" type="number" min="0.5" max="24" step="0.5" value="${state.goalHours}"></div></div><div class="settings-row" style="align-items:flex-start"><div><strong>تم رنگی</strong><div class="muted tiny">ظاهر دلخواه برنامه رو انتخاب کن</div></div><div class="theme-options">${[['dark','تیره'],['light','روشن'],['purple','بنفش'],['orange','نارنجی'],['amoled','AMOLED مشکی']].map(([v,l])=>`<button class="theme-btn ${state.theme===v?'active':''}" data-action="theme" data-theme="${v}">${l}</button>`).join('')}</div></div><div class="settings-row"><div><strong>پس‌زمینه دلخواه برنامه</strong><div class="muted tiny">پس‌زمینه کلی صفحات؛ یک عکس از گوشی انتخاب کن</div></div><div><label class="btn btn-soft btn-sm" for="wallpaper-file">انتخاب تصویر</label><input id="wallpaper-file" type="file" accept="image/*" class="hidden">${state.wallpaper?'<button class="btn btn-red btn-sm" data-action="remove-wallpaper">حذف</button>':''}</div></div>
 <div class="personal-bg-tools"><div class="personal-bg-tool"><strong>پس‌زمینه هدر سایت</strong><small>تصویر دلخواه فقط برای سربرگ بالا</small><div><label class="btn btn-soft btn-sm" for="header-wallpaper-file">انتخاب تصویر</label><input id="header-wallpaper-file" type="file" accept="image/*" class="hidden">${state.headerWallpaper?'<button class="btn btn-red btn-sm" data-action="remove-header-wallpaper">حذف تصویر</button>':''}</div></div><div class="personal-bg-tool"><strong>پس‌زمینه کرنومتر</strong><small>تصویر دلخواه فقط برای صفحه کرنومتر</small><div><label class="btn btn-soft btn-sm" for="timer-wallpaper-file">انتخاب تصویر</label><input id="timer-wallpaper-file" type="file" accept="image/*" class="hidden">${state.timerWallpaper?'<button class="btn btn-red btn-sm" data-action="remove-timer-wallpaper">حذف تصویر</button>':''}</div></div></div>
 <section class="panel event-settings"><div class="section-head" style="margin:0"><div><h3>روزشمار رویداد</h3><small>یک مناسبت یا آزمون را انتخاب کن تا شمارش معکوس آن در صفحه اصلی نمایش داده شود.</small></div><span>🗓️</span></div><form id="event-form" class="form-grid"><div class="field"><label for="event-title">عنوان رویداد</label><input class="input" id="event-title" maxlength="60" placeholder="مثلاً آزمون آزمایشی" value="${esc(state.eventCountdown?.title||'')}"></div><div class="field"><label for="event-date">تاریخ رویداد</label><input class="input" id="event-date" type="date" required value="${esc(state.eventCountdown?.date||'')}"></div><div class="field full"><button class="btn btn-primary" type="submit">ذخیره روزشمار</button>${state.eventCountdown?'<button class="btn btn-red btn-sm" type="button" data-action="clear-event">حذف رویداد</button>':''}</div></form></section>
 ${renderWeeklySchedule()}${renderPlannedSchedule()}<div class="settings-row"><div><strong>پشتیبان‌گیری از اطلاعات</strong><div class="muted tiny">خروجی و بازیابی تمام پارت‌ها و تنظیمات</div></div><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn btn-soft btn-sm" data-action="backup">خروجی JSON</button><label for="restore-file" class="btn btn-soft btn-sm">بازیابی</label><input id="restore-file" class="hidden" type="file" accept="application/json"></div></div></section><section class="panel" style="margin-top:13px"><div class="section-head" style="margin-top:0"><div><h3>مدیریت دروس</h3><small>درس‌های موردنظرت را به فهرست برنامه اضافه کن</small></div><button class="btn btn-soft btn-sm" data-action="add-subject">＋ افزودن درس</button></div>${state.customSubjects.length?`<div class="subject-list">${state.customSubjects.map(x=>`<div class="subject-card"><div class="subject-icon" style="--subject-color:${x.color}">${esc(x.icon)}</div><div class="subject-info"><strong>${esc(x.name)}</strong><small>درس افزوده‌شده توسط شما</small></div><button class="btn btn-red btn-sm" data-action="delete-custom-subject" data-subject="${esc(x.name)}" aria-label="حذف درس ${esc(x.name)}">حذف</button></div>`).join('')}</div>`:`<div class="empty-state" style="padding:15px"><strong>هنوز درسی اضافه نکرده‌ای</strong><div class="tiny">با گزینهٔ افزودن درس، فهرست را کامل کن.</div></div>`}</section><section class="panel"><h3 style="margin:0 0 8px">راهنمای محاسبه</h3><p class="small muted" style="margin:0">درصد پاسخ‌گویی تست‌ها طبق فرمول نمره منفی محاسبه می‌شود:</p><div dir="ltr" style="text-align:center;padding:14px;background:var(--panel2);border-radius:12px;margin-top:10px;font-weight:900;color:var(--green)">(3 × correct − wrong) ÷ (3 × total) × 100</div><p class="tiny muted">سوالات بدون پاسخ در تعداد کل سوالات لحاظ می‌شوند و امتیاز منفی نمی‌گیرند.</p></section>`;}
@@ -335,7 +418,39 @@ function imageToData(file,maxSize=1600,quality=.78){return new Promise((resolve,
 document.addEventListener('click',e=>{const btn=e.target.closest('[data-action],[data-view]');if(!btn)return;if(btn.dataset.view){nav(btn.dataset.view);return;}const a=btn.dataset.action;switch(a){case 'start-new':beginSetup('حسابان',false);break;case 'manual-add':beginSetup('حسابان',true);break;case 'add-subject':openAddSubjectModal();break;case 'add-planned-block':planDraft=null;openModal(renderPlanTimeModal());break;case 'plan-time-back':openModal(renderPlanTimeModal());break;case 'plan-test-choice':document.getElementById('plan-test-no').classList.toggle('selected',btn.dataset.value==='no');document.getElementById('plan-test-yes').classList.toggle('selected',btn.dataset.value==='yes');document.getElementById('plan-test-count-wrap').classList.toggle('hidden',btn.dataset.value!=='yes');break;case 'plan-essay-choice':document.getElementById('plan-essay-no').classList.toggle('selected',btn.dataset.value==='no');document.getElementById('plan-essay-yes').classList.toggle('selected',btn.dataset.value==='yes');break;case 'delete-planned-block':{const id=btn.dataset.id;openModal(`<div class="modal-head"><h3>حذف پارت برنامه</h3><button class="close-btn" data-action="close-modal">×</button></div><p class="small muted">این پارت از برنامه‌ریزی حذف شود؟</p><div class="modal-actions"><button class="btn btn-red" data-action="confirm-delete-planned-block" data-id="${esc(id)}">حذف پارت</button><button class="btn btn-soft" data-action="close-modal">انصراف</button></div>`);break;}case 'confirm-delete-planned-block':state.plannedBlocks=(state.plannedBlocks||[]).filter(x=>x.id!==btn.dataset.id);saveState();closeModal();render();notify('پارت برنامه حذف شد.');break;case 'delete-custom-subject':confirmDeleteCustomSubject(btn.dataset.subject);break;case 'confirm-delete-custom-subject':deleteCustomSubject(btn.dataset.subject);break;case 'quick-start':beginSetup(btn.dataset.subject||'حسابان',false);break;case 'streak-day':openStreakDayModal(btn.dataset.dayKey);break;case 'streak-day-add':{const key=btn.dataset.dayKey;closeModal();beginSetup('حسابان',true,key);setupDraft.returnView='streak';break;}case 'back-dashboard':setupDraft=null;nav('dashboard');break;case 'open-settings':nav('settings');break;case 'toggle-type':if(!setupDraft)break;setupDraft.types=setupDraft.types.includes(btn.dataset.type)?setupDraft.types.filter(x=>x!==btn.dataset.type):[...setupDraft.types,btn.dataset.type];btn.classList.toggle('selected');break;case 'toggle-pause':if(state.timer){if(state.timer.running){state.timer.elapsedMs=elapsedTimer();state.timer.running=false;state.timer.startedAt=null;}else{state.timer.running=true;state.timer.startedAt=Date.now();}saveState();render();}break;case 'finish-timer':if(state.timer){const total=elapsedTimer();const context={...state.timer.context};state.timer=null;saveState();openFinish(total,context);}break;case 'cancel-timer':openModal(`<div class="modal-head"><h3>لغو پارت فعال</h3><button class="close-btn" data-action="close-modal">×</button></div><p class="muted small">زمان ثبت‌شده برای این پارت ذخیره نخواهد شد. مطمئنی؟</p><div class="modal-actions"><button class="btn btn-red" data-action="confirm-cancel">لغو پارت</button><button class="btn btn-soft" data-action="close-modal">ادامه مطالعه</button></div>`);break;case 'confirm-cancel':state.timer=null;saveState();closeModal();notify('پارت لغو شد.');nav('dashboard');break;case 'session-detail':detailModal(btn.dataset.id);break;case 'close-modal':closeModal();break;case 'delete-session':confirmDelete(btn.dataset.id);break;case 'confirm-delete':state.sessions=state.sessions.filter(s=>s.id!==btn.dataset.id);saveState();closeModal();notify('پارت حذف شد.');render();break;case 'test-choice':document.getElementById('test-no').classList.toggle('selected',btn.dataset.value==='no');document.getElementById('test-yes').classList.toggle('selected',btn.dataset.value==='yes');document.getElementById('test-fields').classList.toggle('hidden',btn.dataset.value!=='yes');break;case 'essay-choice':document.getElementById('essay-no').classList.toggle('selected',btn.dataset.value==='no');document.getElementById('essay-yes').classList.toggle('selected',btn.dataset.value==='yes');document.getElementById('essay-fields').classList.toggle('hidden',btn.dataset.value!=='yes');break;case 'export-pdf':exportReport();break;case 'share-period':state.statsPeriod=btn.dataset.period;saveState();render();break;case 'share-period-prev':{const key=state.statsPeriod==='day'?'statsDayOffset':state.statsPeriod==='week'?'reportWeekOffset':'statsMonthOffset';state[key]=Math.max(0,Number(state[key])||0)+1;saveState();render();break;}case 'share-period-next':{const key=state.statsPeriod==='day'?'statsDayOffset':state.statsPeriod==='week'?'reportWeekOffset':'statsMonthOffset';state[key]=Math.max(0,(Number(state[key])||0)-1);saveState();render();break;}case 'week-prev':state.reportWeekOffset++;saveState();render();break;case 'week-next':state.reportWeekOffset=Math.max(0,state.reportWeekOffset-1);saveState();render();break;case 'theme':state.theme=btn.dataset.theme;saveState();render();break;case 'remove-wallpaper':state.wallpaper=null;saveState();render();notify('پس‌زمینه حذف شد.');break;case 'remove-header-wallpaper':state.headerWallpaper=null;saveState();render();notify('پس‌زمینه هدر حذف شد.');break;case 'remove-timer-wallpaper':state.timerWallpaper=null;saveState();render();notify('پس‌زمینه کرنومتر حذف شد.');break;case 'clear-event':state.eventCountdown=null;saveState();render();notify('روزشمار رویداد حذف شد.');break;case 'backup':backup();break;case 'backdrop-close':if(e.target===btn)closeModal();break;}});
 document.addEventListener('change',e=>{if(e.target.matches('[data-schedule-day]')){const dayKey=e.target.dataset.scheduleDay;state.weeklySchedule[dayKey]=readScheduleControls(dayKey);saveState();const day=WEEK_DAYS.find(d=>String(d.key)===String(dayKey));notify(`برنامه ${day?.label||'روز'} ذخیره شد.`);}if(e.target.id==='plan-subject'){if(e.target.value==='حسابان'){const g=document.getElementById('plan-grade');if(g)g.value='12';}updatePlanChapterOptions();}if(e.target.id==='plan-grade'){updatePlanChapterOptions();}if(e.target.id==='setup-subject'){setupDraft.subject=e.target.value;setupDraft.grade=e.target.value==='حسابان'?'12':setupDraft.grade;const g=document.getElementById('setup-grade');if(g)g.value=setupDraft.grade;document.getElementById('setup-book-fields').innerHTML=renderBookFields();}if(e.target.id==='setup-grade'){setupDraft.grade=e.target.value;const chapters=CURRICULUM[setupDraft.subject]?.[setupDraft.grade]?.chapters||GENERIC_CHAPTERS;setupDraft.chapter=chapters[0];document.getElementById('setup-book-fields').innerHTML=renderBookFields();}if(['wallpaper-file','header-wallpaper-file','timer-wallpaper-file'].includes(e.target.id)&&e.target.files[0]){const field=e.target.id==='wallpaper-file'?'wallpaper':e.target.id==='header-wallpaper-file'?'headerWallpaper':'timerWallpaper';imageToData(e.target.files[0],field==='wallpaper'?1600:1300,field==='wallpaper'?.78:.74).then(data=>{state[field]=data;saveState();render();notify(field==='headerWallpaper'?'پس‌زمینه هدر تغییر کرد.':field==='timerWallpaper'?'پس‌زمینه کرنومتر تغییر کرد.':'پس‌زمینه با موفقیت تغییر کرد.');}).catch(()=>notify('بارگذاری تصویر انجام نشد.','error'));}if(e.target.id==='restore-file'&&e.target.files[0]){const file=e.target.files[0];const reader=new FileReader();reader.onload=()=>{try{const data=JSON.parse(reader.result);if(!Array.isArray(data.sessions))throw new Error('invalid');state={...structuredClone(DEFAULT),...data,headerWallpaper:data.headerWallpaper||null,timerWallpaper:data.timerWallpaper||null,eventCountdown:data.eventCountdown&&typeof data.eventCountdown==='object'?data.eventCountdown:null,customSubjects:Array.isArray(data.customSubjects)?data.customSubjects:[],weeklySchedule:normalizeWeeklySchedule(data.weeklySchedule),plannedBlocks:Array.isArray(data.plannedBlocks)?data.plannedBlocks:[]};syncSubjects();saveState();render();notify('اطلاعات بازیابی شد.');}catch(err){notify('فایل پشتیبان معتبر نیست.','error');}};reader.readAsText(file);}if(e.target.id==='goal-hours'){const v=+e.target.value;if(v>=.5&&v<=24){state.goalHours=v;saveState();notify('هدف روزانه به‌روزرسانی شد.');}}if(e.target.id==='display-name'){state.displayName=e.target.value.trim()||'دانش‌آموز';saveState();}});
 document.addEventListener('input',e=>{if(e.target.matches('[data-schedule-day]'))refreshSchedulePreview(e.target.dataset.scheduleDay);if(e.target.matches('[data-plan-time]')){const key=`plan-${e.target.dataset.planTime}-${e.target.dataset.planUnit}-value`;const out=document.getElementById(key);if(out)out.textContent=fa(e.target.value);}if(e.target.id==='quality'){document.getElementById('quality-value').textContent=fa(e.target.value)+'٪';}if(e.target.id==='test-count'||e.target.id==='test-correct'||e.target.id==='test-wrong'||e.target.id==='test-blank'){const hint=document.getElementById('test-hint');if(hint){const c=+document.getElementById('test-count').value,co=+document.getElementById('test-correct').value,w=+document.getElementById('test-wrong').value,b=+document.getElementById('test-blank').value;hint.textContent=`مجموع پاسخ‌ها: ${fa(co+w+b)} از ${fa(c)} تست`;hint.style.color=co+w+b===c?'var(--green)':'var(--muted)';}}});
-document.addEventListener('submit',e=>{if(e.target.id==='event-form'){e.preventDefault();const title=document.getElementById('event-title').value.trim(),date=document.getElementById('event-date').value;if(!title||!date){notify('عنوان و تاریخ رویداد را وارد کن.','error');return;}const [y,m,d]=date.split('-').map(Number);const check=new Date(Date.UTC(y,m-1,d));if(check.getUTCFullYear()!==y||check.getUTCMonth()!==m-1||check.getUTCDate()!==d){notify('تاریخ رویداد معتبر نیست.','error');return;}state.eventCountdown={title,date};saveState();render();notify('روزشمار رویداد ذخیره شد.');}if(e.target.id==='plan-time-form'){e.preventDefault();const get=(p,u)=>Number(document.getElementById(`plan-${p}-${u}`).value);const startHour=get('start','hour'),startMinute=get('start','minute'),endHour=get('end','hour'),endMinute=get('end','minute');if(startHour===endHour&&startMinute===endMinute){const err=document.getElementById('plan-time-error');if(err)err.textContent='ساعت شروع و پایان نمی‌تواند یکسان باشد.';return;}planDraft={...(planDraft||{}),dayKey:Number(document.getElementById('plan-day').value),startHour,startMinute,endHour,endMinute};openModal(renderPlanDetailsModal());}if(e.target.id==='plan-details-form'){e.preventDefault();savePlannedBlock();}if(e.target.id==='custom-subject-form'){e.preventDefault();saveCustomSubjectFromForm();}if(e.target.id==='setup-form'){e.preventDefault();const subject=document.getElementById('setup-subject').value;const grade=document.getElementById('setup-grade').value;const book=document.getElementById('setup-book')?.value||'';const chapter=document.getElementById('setup-chapter')?.value||'';const topic=document.getElementById('setup-topic').value.trim();const types=[...document.querySelectorAll('.type-chip.selected')].map(x=>x.dataset.type).filter(Boolean);const context={subject,grade,book:subject==='حسابان'?'':book,chapter,topic,types,startAt:Date.now()};if(setupDraft.manual){const interval=manualInterval(setupDraft.dayKey,document.getElementById('manual-start-time').value,document.getElementById('manual-end-time').value);if(interval.error){notify(interval.error,'error');return;}const overlap=findTimeOverlap(interval.startAt,interval.endAt);if(overlap){notify(overlapWarning(overlap),'error');return;}context.startAt=interval.startAt;context.endAt=interval.endAt;context.dayKey=setupDraft.dayKey;context.manualInterval=true;context.returnView=setupDraft.returnView||'dashboard';openFinish(interval.duration,context);}else{state.timer={running:true,startedAt:Date.now(),elapsedMs:0,context};saveState();setupDraft=null;nav('timer');notify('کرنومتر شروع شد؛ موفق باشی!');}}if(e.target.id==='finish-form'){e.preventDefault();saveSessionFromForm();}});
+document.addEventListener('submit',e=>{
+ if(e.target.id!=='track-form')return;
+
+ e.preventDefault();
+
+ const track=document.getElementById('track-select').value;
+ const specialty=document.getElementById('track-specialty').value.trim();
+ const meta=TRACK_META[track];
+ const error=document.getElementById('track-error');
+
+ if(!meta){
+  error.textContent='لطفاً رشتهٔ تحصیلی خود را انتخاب کن.';
+  return;
+ }
+
+ if(meta.specialty&&!specialty){
+  error.textContent='نام رشتهٔ تخصصی هنرستان را وارد کن.';
+  return;
+ }
+
+ state.studyTrack=track;
+ state.vocationalSpecialty=meta.specialty?specialty:'';
+
+ syncSubjects();
+ saveState();
+
+ trackChangeMode=false;
+ activeView='dashboard';
+
+ render();
+ notify('رشتهٔ تحصیلی ذخیره شد. خوش آمدی!');
+});
+  document.addEventListener('submit',e=>{if(e.target.id==='event-form'){e.preventDefault();const title=document.getElementById('event-title').value.trim(),date=document.getElementById('event-date').value;if(!title||!date){notify('عنوان و تاریخ رویداد را وارد کن.','error');return;}const [y,m,d]=date.split('-').map(Number);const check=new Date(Date.UTC(y,m-1,d));if(check.getUTCFullYear()!==y||check.getUTCMonth()!==m-1||check.getUTCDate()!==d){notify('تاریخ رویداد معتبر نیست.','error');return;}state.eventCountdown={title,date};saveState();render();notify('روزشمار رویداد ذخیره شد.');}if(e.target.id==='plan-time-form'){e.preventDefault();const get=(p,u)=>Number(document.getElementById(`plan-${p}-${u}`).value);const startHour=get('start','hour'),startMinute=get('start','minute'),endHour=get('end','hour'),endMinute=get('end','minute');if(startHour===endHour&&startMinute===endMinute){const err=document.getElementById('plan-time-error');if(err)err.textContent='ساعت شروع و پایان نمی‌تواند یکسان باشد.';return;}planDraft={...(planDraft||{}),dayKey:Number(document.getElementById('plan-day').value),startHour,startMinute,endHour,endMinute};openModal(renderPlanDetailsModal());}if(e.target.id==='plan-details-form'){e.preventDefault();savePlannedBlock();}if(e.target.id==='custom-subject-form'){e.preventDefault();saveCustomSubjectFromForm();}if(e.target.id==='setup-form'){e.preventDefault();const subject=document.getElementById('setup-subject').value;const grade=document.getElementById('setup-grade').value;const book=document.getElementById('setup-book')?.value||'';const chapter=document.getElementById('setup-chapter')?.value||'';const topic=document.getElementById('setup-topic').value.trim();const types=[...document.querySelectorAll('.type-chip.selected')].map(x=>x.dataset.type).filter(Boolean);const context={subject,grade,book:subject==='حسابان'?'':book,chapter,topic,types,startAt:Date.now()};if(setupDraft.manual){const interval=manualInterval(setupDraft.dayKey,document.getElementById('manual-start-time').value,document.getElementById('manual-end-time').value);if(interval.error){notify(interval.error,'error');return;}const overlap=findTimeOverlap(interval.startAt,interval.endAt);if(overlap){notify(overlapWarning(overlap),'error');return;}context.startAt=interval.startAt;context.endAt=interval.endAt;context.dayKey=setupDraft.dayKey;context.manualInterval=true;context.returnView=setupDraft.returnView||'dashboard';openFinish(interval.duration,context);}else{state.timer={running:true,startedAt:Date.now(),elapsedMs:0,context};saveState();setupDraft=null;nav('timer');notify('کرنومتر شروع شد؛ موفق باشی!');}}if(e.target.id==='finish-form'){e.preventDefault();saveSessionFromForm();}});
 document.getElementById('floating-add').addEventListener('click',()=>beginSetup('حسابان',true));
 // Resume timer after reload; elapsed time is based on a timestamp.
 if(state.timer&&state.timer.running&&state.timer.startedAt){state.timer.running=true;}
